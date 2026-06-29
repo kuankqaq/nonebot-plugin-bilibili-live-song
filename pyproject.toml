@@ -1,0 +1,46 @@
+[build-system]
+requires = ["hatchling>=1.25.0"]
+build-backend = "hatchling.build"
+
+[project]
+name = "nonebot-plugin-bilibili-live-song"
+version = "0.1.0"
+description = "基于 nonebot-adapter-bilibili-live 的 B 站直播点歌插件"
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+authors = [
+  { name = "kuank" }
+]
+dependencies = [
+  "nonebot2[aiohttp]>=2.4.2",
+  "nonebot-adapter-bilibili-live>=0.2.5",
+  "httpx>=0.27.0",
+  "pydantic>=2.0.0",
+]
+
+[project.entry-points."nonebot.plugin"]
+nonebot_plugin_bilibili_live_song = "nonebot_plugin_bilibili_live_song"
+
+[project.urls]
+Homepage = "https://github.com/example/nonebot-plugin-bilibili-live-song"
+Repository = "https://github.com/example/nonebot-plugin-bilibili-live-song"
+
+[dependency-groups]
+dev = [
+  "ruff>=0.12.1",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/nonebot_plugin_bilibili_live_song"]
+
+[tool.ruff]
+line-length = 88
+target-version = "py39"
+
+[tool.ruff.format]
+line-ending = "lf"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "RUF"]
+ignore = ["UP037"]

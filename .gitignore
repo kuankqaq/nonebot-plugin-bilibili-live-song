@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+.env
+.env.*
+.bili_live_song/
+*.db
+*.sqlite
+*.sqlite3
