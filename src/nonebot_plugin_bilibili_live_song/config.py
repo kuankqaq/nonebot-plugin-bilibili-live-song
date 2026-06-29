@@ -17,6 +17,7 @@ class Config(BaseModel):
     bili_live_song_enabled: bool = True
     bili_live_song_service_base_url: str
     bili_live_song_service_auth_token: str = ""
+    bili_live_song_service_cookie: str = ""
     bili_live_song_service_timeout_seconds: float = 8.0
     bili_live_song_reply_prefix: str = "🎵"
     bili_live_song_request_cooldown_seconds: int = 15

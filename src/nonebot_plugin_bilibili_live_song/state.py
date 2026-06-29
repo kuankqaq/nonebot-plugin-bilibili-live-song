@@ -59,6 +59,8 @@ class QueueManager:
             superchat_price=superchat_price,
             play_url=song.play_url,
             fee=song.fee,
+            is_trial=song.is_trial,
+            play_url_source=song.play_url_source,
             created_at=now,
             updated_at=now,
         )
@@ -91,6 +93,8 @@ class QueueManager:
                 superchat_price=0.0,
                 play_url=track.play_url,
                 fee=track.fee,
+                is_trial=track.is_trial,
+                play_url_source=track.play_url_source,
                 created_at=now + added / 1000,
                 updated_at=now + added / 1000,
             )
@@ -100,6 +104,10 @@ class QueueManager:
 
     def list_queue(self, room_id: int) -> list[SongRequest]:
         return self.storage.list_queue(room_id)
+
+    def update_request(self, item: SongRequest) -> None:
+        item.updated_at = time.time()
+        self.storage.upsert_request(item)
 
     def get_current(self, room_id: int) -> Optional[SongRequest]:
         return self.storage.get_current(room_id)

@@ -1,5 +1,27 @@
 # nonebot-plugin-bilibili-live-song
 
+## 网易云 cookie 怎么填
+
+如果 NeteaseCloudMusicApi 需要登录态，请把 **网易云音乐 cookie** 填到：
+
+```dotenv
+BILI_LIVE_SONG_SERVICE_COOKIE=MUSIC_U=你的值; __csrf=你的值; NMTID=你的值;
+```
+
+获取和填写方法：
+
+1. 在浏览器打开 `https://music.163.com/` 并登录网易云音乐。
+2. 按 `F12` 打开开发者工具，切到 `Network`。
+3. 刷新页面，点任意一个发往 `music.163.com` 的请求。
+4. 在 `Request Headers` 里找到 `Cookie`，复制整行 `Cookie:` 后面的内容。
+5. 粘贴到 `.env` 的 `BILI_LIVE_SONG_SERVICE_COOKIE=` 后面。
+
+注意：
+
+- 这里填的是 **网易云音乐 cookie**，不是 B 站 `BILIBILI_LIVE_BOTS` 里的 cookie。
+- 不要带前缀 `Cookie:`，只填 `MUSIC_U=...; __csrf=...` 这种内容。
+- 如果 NeteaseCloudMusicApi 已经在浏览器里登录，但插件仍拿不到会员歌曲地址，通常就是插件请求没有带这份 cookie。
+
 基于 `nonebot-adapter-bilibili-live` 的 B 站直播点歌插件。
 
 ## 特性
@@ -7,7 +29,7 @@
 - 仅支持 **用户 Bot（Web API）**
 - 通过外部 **NeteaseCloudMusicApi** 搜歌
 - `/点歌 关键词` 自动取第一首结果
-- 通过 `/song/url/v1` 获取真实可播地址，失败时自动回退到 `outer/url`
+- 通过 `/song/url/v1` 获取真实可播地址
 - 支持 `/添加歌单 歌单ID或链接`，且**只有管理员和主播能用**
 - 支持 `/歌单`、`/当前`、`/取消`、`/切歌`、`/点歌帮助`
 - 支持 **SuperChat 优先**
@@ -33,6 +55,7 @@ pip install -e .
 ```dotenv
 BILI_LIVE_SONG_SERVICE_BASE_URL=http://127.0.0.1:3000
 BILI_LIVE_SONG_SERVICE_AUTH_TOKEN=
+BILI_LIVE_SONG_SERVICE_COOKIE=
 BILI_LIVE_SONG_SERVICE_TIMEOUT_SECONDS=8
 BILI_LIVE_SONG_ENABLED=true
 BILI_LIVE_SONG_ADMIN_USER_IDS=["123456"]
@@ -68,9 +91,9 @@ BILI_LIVE_SONG_OVERLAY_DIR=.bili_live_song/overlay
 - 取歌单歌曲：`GET /playlist/track/all?id=歌单ID&limit=100`
 - 获取播放地址：`GET /song/url/v1?id=歌曲ID&level=exhigh`
 
-如果 `/song/url/v1` 返回空地址，则自动回退到：
+如果 NeteaseCloudMusicApi 需要登录态，请把网易云音乐 cookie 配到：
 
-- `https://music.163.com/song/media/outer/url?id=SONG_ID.mp3`
+- `BILI_LIVE_SONG_SERVICE_COOKIE=MUSIC_U=...; __csrf=...`
 
 ## 简单叠加层
 
@@ -89,7 +112,7 @@ BILI_LIVE_SONG_OVERLAY_DIR=.bili_live_song/overlay
 
 这个页面内置了 HTML5 `audio` 播放器：
 - 当前播放歌曲会自动切换到对应 `play_url`
-- VIP/试听歌曲会在 overlay 中标记出来
+- 只有 `/song/url/v1` 返回 `freeTrialInfo` 时，overlay 才会标记为试听
 - 真正有声音，取决于 **你打开这个 overlay 的浏览器/OBS 浏览器源是否允许播放音频**
 
 ## 说明
