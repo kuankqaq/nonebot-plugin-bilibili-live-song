@@ -4,9 +4,15 @@ from nonebot import get_plugin_config
 from nonebot.plugin import PluginMetadata
 
 from .config import Config
-from .handlers import handle_message, permission_checker, update_overlay
+from .handlers import (
+    handle_message,
+    overlay_server,
+    permission_checker,
+    start_overlay_watcher,
+    update_overlay,
+)
+
 from .matchers import danmaku_matcher, room_admins_matcher, superchat_matcher
-from .overlay import OverlayServer
 
 
 __plugin_meta__ = PluginMetadata(
@@ -18,13 +24,9 @@ __plugin_meta__ = PluginMetadata(
 
 config = get_plugin_config(Config)
 
-if config.bili_live_song_overlay_enabled:
-    overlay_server = OverlayServer(
-        config.overlay_dir,
-        config.bili_live_song_overlay_host,
-        config.bili_live_song_overlay_port,
-    )
+if overlay_server is not None:
     overlay_server.start()
+    start_overlay_watcher()
     update_overlay(0)
 
 

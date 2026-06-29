@@ -26,6 +26,7 @@ class Config(BaseModel):
     bili_live_song_admin_user_ids: set[str] = Field(default_factory=set)
     bili_live_song_room_settings: dict[int, RoomSettings] = Field(default_factory=dict)
     bili_live_song_playlist_max_tracks: int = 100
+    bili_live_song_song_level: str = "exhigh"
     bili_live_song_overlay_enabled: bool = True
     bili_live_song_overlay_host: str = "127.0.0.1"
     bili_live_song_overlay_port: int = 18080

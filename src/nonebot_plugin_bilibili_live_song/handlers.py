@@ -1,9 +1,7 @@
 from __future__ import annotations
 
 import threading
-from pathlib import Path
-from typing import Optional
-from urllib.parse import quote
+import time
 
 from nonebot import get_plugin_config, logger
 from nonebot.adapters.bilibili_live import DanmakuEvent, SuperChatEvent, WebBot
@@ -16,7 +14,7 @@ from .formatters import (
     reply_text,
     request_success_text,
 )
-from .overlay import OverlayRenderer
+from .overlay import OverlayRenderer, OverlayServer
 from .parser import CommandType, format_current, format_queue_line, parse_command
 from .permission import PermissionChecker
 from .service import MusicServiceError, NeteaseMusicService
@@ -32,8 +30,21 @@ music_service = NeteaseMusicService(
     config.bili_live_song_service_base_url,
     config.bili_live_song_service_auth_token,
     config.bili_live_song_service_timeout_seconds,
+    config.bili_live_song_song_level,
 )
-overlay_renderer = OverlayRenderer(config.overlay_dir) if config.bili_live_song_overlay_enabled else None
+overlay_renderer = (
+    OverlayRenderer(config.overlay_dir) if config.bili_live_song_overlay_enabled else None
+)
+overlay_server = (
+    OverlayServer(
+        config.overlay_dir,
+        config.bili_live_song_overlay_host,
+        config.bili_live_song_overlay_port,
+    )
+    if config.bili_live_song_overlay_enabled
+    else None
+)
+_overlay_watcher_started = False
 
 
 def update_overlay(room_id: int) -> None:
@@ -42,6 +53,31 @@ def update_overlay(room_id: int) -> None:
     current = queue_manager.ensure_current(room_id)
     queue = queue_manager.list_queue(room_id)
     overlay_renderer.render(current, queue)
+
+
+def process_next_track(room_id: int) -> None:
+    skipped = queue_manager.skip_current(room_id)
+    if skipped is None:
+        update_overlay(room_id)
+        return
+    update_overlay(room_id)
+
+
+def start_overlay_watcher() -> None:
+    global _overlay_watcher_started
+    if _overlay_watcher_started or overlay_server is None:
+        return
+
+    def worker() -> None:
+        while True:
+            room_ids = overlay_server.consume_next_room_ids()
+            for room_id in room_ids:
+                process_next_track(room_id)
+            time.sleep(1)
+
+    thread = threading.Thread(target=worker, daemon=True, name="overlay-next-watcher")
+    thread.start()
+    _overlay_watcher_started = True
 
 
 async def handle_message(bot: WebBot, event: DanmakuEvent | SuperChatEvent) -> None:
@@ -67,7 +103,10 @@ async def handle_message(bot: WebBot, event: DanmakuEvent | SuperChatEvent) -> N
 
     if command == CommandType.LIST:
         queue = queue_manager.list_queue(event.room_id)
-        lines = [format_queue_line(index, item) for index, item in enumerate(queue, start=1)]
+        lines = [
+            format_queue_line(index, item)
+            for index, item in enumerate(queue, start=1)
+        ]
         await bot.send(event, queue_text(config.bili_live_song_reply_prefix, lines))
         return
 
@@ -86,7 +125,10 @@ async def handle_message(bot: WebBot, event: DanmakuEvent | SuperChatEvent) -> N
     if command == CommandType.CANCEL:
         cancelled = queue_manager.cancel_own_request(event.room_id, event.get_user_id())
         if cancelled is None:
-            await bot.send(event, reply_text(config.bili_live_song_reply_prefix, "你当前没有可取消的排队歌曲"))
+            await bot.send(
+                event,
+                reply_text(config.bili_live_song_reply_prefix, "你当前没有可取消的排队歌曲"),
+            )
             return
         update_overlay(event.room_id)
         await bot.send(
@@ -147,7 +189,10 @@ async def handle_message(bot: WebBot, event: DanmakuEvent | SuperChatEvent) -> N
         )
         queue_manager.ensure_current(event.room_id)
         update_overlay(event.room_id)
-        await bot.send(event, playlist_success_text(config.bili_live_song_reply_prefix, added, playlist_name))
+        await bot.send(
+            event,
+            playlist_success_text(config.bili_live_song_reply_prefix, added, playlist_name),
+        )
         return
 
     if command == CommandType.REQUEST:

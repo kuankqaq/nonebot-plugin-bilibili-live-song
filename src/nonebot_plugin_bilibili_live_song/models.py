@@ -10,6 +10,8 @@ class SongInfo:
     song_name: str
     artist: str
     album: str = ""
+    play_url: str = ""
+    fee: int = 0
 
 
 @dataclass(slots=True)
@@ -26,6 +28,8 @@ class SongRequest:
     priority: int = 0
     is_superchat: bool = False
     superchat_price: float = 0.0
+    play_url: str = ""
+    fee: int = 0
     status: Literal["queued", "playing", "done", "cancelled"] = "queued"
     created_at: float = 0.0
     updated_at: float = 0.0
@@ -37,3 +41,5 @@ class PlaylistTrack:
     song_name: str
     artist: str
     album: str = ""
+    play_url: str = ""
+    fee: int = 0

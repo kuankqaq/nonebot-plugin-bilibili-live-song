@@ -57,6 +57,8 @@ class QueueManager:
             priority=1 if is_superchat else 0,
             is_superchat=is_superchat,
             superchat_price=superchat_price,
+            play_url=song.play_url,
+            fee=song.fee,
             created_at=now,
             updated_at=now,
         )
@@ -87,6 +89,8 @@ class QueueManager:
                 priority=0,
                 is_superchat=False,
                 superchat_price=0.0,
+                play_url=track.play_url,
+                fee=track.fee,
                 created_at=now + added / 1000,
                 updated_at=now + added / 1000,
             )

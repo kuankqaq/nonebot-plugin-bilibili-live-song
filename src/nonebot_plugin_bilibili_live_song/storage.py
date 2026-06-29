@@ -33,12 +33,19 @@ class Storage:
                     priority INTEGER NOT NULL,
                     is_superchat INTEGER NOT NULL,
                     superchat_price REAL NOT NULL,
+                    play_url TEXT NOT NULL DEFAULT '',
+                    fee INTEGER NOT NULL DEFAULT 0,
                     status TEXT NOT NULL,
                     created_at REAL NOT NULL,
                     updated_at REAL NOT NULL
                 )
                 """
             )
+            columns = {row[1] for row in conn.execute("PRAGMA table_info(song_queue)").fetchall()}
+            if "play_url" not in columns:
+                conn.execute("ALTER TABLE song_queue ADD COLUMN play_url TEXT NOT NULL DEFAULT ''")
+            if "fee" not in columns:
+                conn.execute("ALTER TABLE song_queue ADD COLUMN fee INTEGER NOT NULL DEFAULT 0")
             conn.execute(
                 """
                 CREATE TABLE IF NOT EXISTS now_playing (
@@ -55,8 +62,8 @@ class Storage:
                 INSERT INTO song_queue (
                     request_id, room_id, user_id, user_name, keyword, song_id,
                     song_name, artist, source, priority, is_superchat,
-                    superchat_price, status, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    superchat_price, play_url, fee, status, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(request_id) DO UPDATE SET
                     room_id = excluded.room_id,
                     user_id = excluded.user_id,
@@ -69,6 +76,8 @@ class Storage:
                     priority = excluded.priority,
                     is_superchat = excluded.is_superchat,
                     superchat_price = excluded.superchat_price,
+                    play_url = excluded.play_url,
+                    fee = excluded.fee,
                     status = excluded.status,
                     created_at = excluded.created_at,
                     updated_at = excluded.updated_at
@@ -86,6 +95,8 @@ class Storage:
                     item.priority,
                     int(item.is_superchat),
                     item.superchat_price,
+                    item.play_url,
+                    item.fee,
                     item.status,
                     item.created_at,
                     item.updated_at,
@@ -103,7 +114,7 @@ class Storage:
                 """
                 SELECT request_id, room_id, user_id, user_name, keyword, song_id,
                        song_name, artist, source, priority, is_superchat,
-                       superchat_price, status, created_at, updated_at
+                       superchat_price, play_url, fee, status, created_at, updated_at
                 FROM song_queue
                 WHERE room_id = ? AND status = 'queued'
                 ORDER BY priority DESC, created_at ASC
@@ -118,8 +129,8 @@ class Storage:
                 """
                 SELECT q.request_id, q.room_id, q.user_id, q.user_name, q.keyword,
                        q.song_id, q.song_name, q.artist, q.source, q.priority,
-                       q.is_superchat, q.superchat_price, q.status,
-                       q.created_at, q.updated_at
+                       q.is_superchat, q.superchat_price, q.play_url, q.fee,
+                       q.status, q.created_at, q.updated_at
                 FROM now_playing n
                 JOIN song_queue q ON q.request_id = n.request_id
                 WHERE n.room_id = ?
@@ -158,7 +169,9 @@ class Storage:
             priority=row[9],
             is_superchat=bool(row[10]),
             superchat_price=row[11],
-            status=row[12],
-            created_at=row[13],
-            updated_at=row[14],
+            play_url=row[12],
+            fee=int(row[13] or 0),
+            status=row[14],
+            created_at=row[15],
+            updated_at=row[16],
         )

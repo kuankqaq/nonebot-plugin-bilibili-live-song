@@ -19,7 +19,7 @@ class OverlayRenderer:
     def render(self, current: SongRequest | None, queue: list[SongRequest]) -> None:
         payload = {
             "current": self._serialize(current) if current else None,
-            "queue": [self._serialize(item) for item in queue[:10]],
+            "queue": [self._serialize(item) for item in queue[:3]],
         }
         self.json_path.write_text(
             json.dumps(payload, ensure_ascii=False, indent=2),
@@ -27,8 +27,6 @@ class OverlayRenderer:
         )
 
     def _ensure_html(self) -> None:
-        if self.html_path.exists():
-            return
         self.html_path.write_text(
             """<!doctype html>
 <html lang=\"zh-CN\">
@@ -39,12 +37,12 @@ class OverlayRenderer:
   <style>
     body {
       margin: 0;
-      font-family: "Microsoft YaHei", sans-serif;
-      background: transparent;
+      font-family: \"Microsoft YaHei\", sans-serif;
+      background: rgba(0,0,0,0);
       color: #fff;
     }
     .panel {
-      width: 420px;
+      width: 460px;
       margin: 16px;
       padding: 16px;
       background: rgba(14, 18, 30, 0.72);
@@ -79,6 +77,11 @@ class OverlayRenderer:
       font-size: 14px;
       opacity: 0.88;
     }
+    audio {
+      width: 100%;
+      margin-top: 10px;
+      filter: drop-shadow(0 4px 12px rgba(0,0,0,0.25));
+    }
     .queue-item {
       display: flex;
       gap: 12px;
@@ -100,6 +103,10 @@ class OverlayRenderer:
       font-size: 11px;
       vertical-align: middle;
     }
+    .vip {
+      background: #ffb020;
+      color: #222;
+    }
   </style>
 </head>
 <body>
@@ -108,23 +115,40 @@ class OverlayRenderer:
     <div class=\"current\">
       <div class=\"current-label\">当前播放</div>
       <div id=\"current\"></div>
+      <audio id=\"player\" controls autoplay preload=\"auto\"></audio>
     </div>
-    <div class=\"queue-label\">排队中</div>
+    <div class=\"queue-label\">排队中（最多显示3首）</div>
     <div id=\"queue\"></div>
   </div>
   <script>
+    let currentUrl = '';
+    let currentRoomId = 0;
+    const player = document.getElementById('player');
     async function refresh() {
       const resp = await fetch('./queue.json?_=' + Date.now());
       const data = await resp.json();
       const current = document.getElementById('current');
       const queue = document.getElementById('queue');
       if (data.current) {
+        currentRoomId = data.current.room_id || 0;
         current.innerHTML = '<div class="song-name">' + escapeHtml(data.current.song_name) +
           (data.current.is_superchat ? '<span class="badge">SC</span>' : '') +
+          (data.current.fee ? '<span class="badge vip">VIP/试听</span>' : '') +
           '</div><div class="song-meta">' + escapeHtml(data.current.artist) + ' · 点歌人 ' +
           escapeHtml(data.current.user_name) + '</div>';
+        current.appendChild(player);
+        if (data.current.play_url && data.current.play_url !== currentUrl) {
+          currentUrl = data.current.play_url;
+          player.src = currentUrl;
+          try { await player.play(); } catch (err) { console.warn('autoplay blocked', err); }
+        }
       } else {
+        currentRoomId = 0;
         current.innerHTML = '<div class="song-meta">暂无播放</div>';
+        current.appendChild(player);
+        currentUrl = '';
+        player.removeAttribute('src');
+        player.load();
       }
       queue.innerHTML = '';
       for (const [index, item] of data.queue.entries()) {
@@ -133,9 +157,22 @@ class OverlayRenderer:
         node.innerHTML = '<div class="index">' + (index + 1) + '</div>' +
           '<div><div>' + escapeHtml(item.song_name) +
           (item.is_superchat ? '<span class="badge">SC</span>' : '') +
+          (item.fee ? '<span class="badge vip">VIP/试听</span>' : '') +
           '</div><div class="song-meta">' + escapeHtml(item.artist) + ' · ' +
           escapeHtml(item.user_name) + '</div></div>';
         queue.appendChild(node);
+      }
+    }
+    async function notifyEnded() {
+      if (!currentRoomId) return;
+      try {
+        await fetch('/api/next', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ room_id: currentRoomId }),
+        });
+      } catch (err) {
+        console.warn('notify ended failed', err);
       }
     }
     function escapeHtml(text) {
@@ -146,6 +183,11 @@ class OverlayRenderer:
         .replace(/"/g, '&quot;')
         .replace(/'/g, '&#39;');
     }
+    player.addEventListener('ended', async () => {
+      currentUrl = '';
+      await notifyEnded();
+      setTimeout(refresh, 500);
+    });
     refresh();
     setInterval(refresh, 2000);
   </script>
@@ -158,10 +200,13 @@ class OverlayRenderer:
     @staticmethod
     def _serialize(item: SongRequest) -> dict[str, object]:
         return {
+            "room_id": item.room_id,
             "song_name": item.song_name,
             "artist": item.artist,
             "user_name": item.user_name,
             "is_superchat": item.is_superchat,
+            "play_url": item.play_url,
+            "fee": item.fee,
         }
 
 
@@ -182,10 +227,35 @@ class OverlayServer:
         self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
         self.thread.start()
 
+    def consume_next_room_ids(self) -> list[int]:
+        room_ids: list[int] = []
+        for path in self.directory.glob("next-*.flag"):
+            stem = path.stem.removeprefix("next-")
+            if stem.isdigit():
+                room_ids.append(int(stem))
+            path.unlink(missing_ok=True)
+        return room_ids
+
     @staticmethod
     def _build_handler(directory: Path):
         class Handler(SimpleHTTPRequestHandler):
             def __init__(self, *args, **kwargs):
                 super().__init__(*args, directory=str(directory), **kwargs)
+
+            def do_POST(self):
+                if self.path != "/api/next":
+                    self.send_error(404)
+                    return
+                content_length = int(self.headers.get("Content-Length", "0"))
+                body = self.rfile.read(content_length) if content_length else b"{}"
+                try:
+                    payload = json.loads(body.decode("utf-8") or "{}")
+                    room_id = int(payload.get("room_id", 0))
+                except Exception:
+                    room_id = 0
+                if room_id > 0:
+                    (directory / f"next-{room_id}.flag").write_text("next", encoding="utf-8")
+                self.send_response(204)
+                self.end_headers()
 
         return Handler
