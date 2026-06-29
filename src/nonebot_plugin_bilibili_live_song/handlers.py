@@ -1,16 +1,25 @@
 from __future__ import annotations
 
-import time
+import threading
+from pathlib import Path
+from typing import Optional
+from urllib.parse import quote
 
 from nonebot import get_plugin_config, logger
 from nonebot.adapters.bilibili_live import DanmakuEvent, SuperChatEvent, WebBot
 
 from .config import Config
-from .formatters import help_text, queue_text, reply_text, request_success_text
-from .models import SongRequest
+from .formatters import (
+    help_text,
+    playlist_success_text,
+    queue_text,
+    reply_text,
+    request_success_text,
+)
+from .overlay import OverlayRenderer
 from .parser import CommandType, format_current, format_queue_line, parse_command
 from .permission import PermissionChecker
-from .service import NeteaseMusicService
+from .service import MusicServiceError, NeteaseMusicService
 from .state import QueueManager
 from .storage import Storage
 
@@ -24,6 +33,15 @@ music_service = NeteaseMusicService(
     config.bili_live_song_service_auth_token,
     config.bili_live_song_service_timeout_seconds,
 )
+overlay_renderer = OverlayRenderer(config.overlay_dir) if config.bili_live_song_overlay_enabled else None
+
+
+def update_overlay(room_id: int) -> None:
+    if overlay_renderer is None:
+        return
+    current = queue_manager.ensure_current(room_id)
+    queue = queue_manager.list_queue(room_id)
+    overlay_renderer.render(current, queue)
 
 
 async def handle_message(bot: WebBot, event: DanmakuEvent | SuperChatEvent) -> None:
@@ -38,6 +56,11 @@ async def handle_message(bot: WebBot, event: DanmakuEvent | SuperChatEvent) -> N
     if command is None:
         return
 
+    anchor_user_id = None
+    room = bot.rooms.get(event.room_id)
+    if room is not None:
+        anchor_user_id = str(room.uid)
+
     if command == CommandType.HELP:
         await bot.send(event, help_text(config.bili_live_song_reply_prefix))
         return
@@ -50,6 +73,7 @@ async def handle_message(bot: WebBot, event: DanmakuEvent | SuperChatEvent) -> N
 
     if command == CommandType.CURRENT:
         current = queue_manager.ensure_current(event.room_id)
+        update_overlay(event.room_id)
         await bot.send(
             event,
             reply_text(
@@ -64,6 +88,7 @@ async def handle_message(bot: WebBot, event: DanmakuEvent | SuperChatEvent) -> N
         if cancelled is None:
             await bot.send(event, reply_text(config.bili_live_song_reply_prefix, "你当前没有可取消的排队歌曲"))
             return
+        update_overlay(event.room_id)
         await bot.send(
             event,
             reply_text(
@@ -74,10 +99,6 @@ async def handle_message(bot: WebBot, event: DanmakuEvent | SuperChatEvent) -> N
         return
 
     if command == CommandType.SKIP:
-        anchor_user_id = None
-        room = bot.rooms.get(event.room_id)
-        if room is not None:
-            anchor_user_id = str(room.uid)
         if not permission_checker.can_manage(event, anchor_user_id=anchor_user_id):
             await bot.send(event, reply_text(config.bili_live_song_reply_prefix, "你没有切歌权限"))
             return
@@ -85,6 +106,7 @@ async def handle_message(bot: WebBot, event: DanmakuEvent | SuperChatEvent) -> N
         if skipped is None:
             await bot.send(event, reply_text(config.bili_live_song_reply_prefix, "当前没有可切的歌曲"))
             return
+        update_overlay(event.room_id)
         await bot.send(
             event,
             reply_text(
@@ -92,6 +114,40 @@ async def handle_message(bot: WebBot, event: DanmakuEvent | SuperChatEvent) -> N
                 f"已切歌：{skipped.song_name} - {skipped.artist}",
             ),
         )
+        return
+
+    if command == CommandType.PLAYLIST:
+        if not permission_checker.can_manage_playlist(event, anchor_user_id=anchor_user_id):
+            await bot.send(event, reply_text(config.bili_live_song_reply_prefix, "只有管理员和主播可以添加歌单"))
+            return
+        if not payload:
+            await bot.send(event, reply_text(config.bili_live_song_reply_prefix, "请输入歌单 ID 或链接"))
+            return
+        try:
+            playlist_name, tracks = await music_service.get_playlist_tracks(
+                payload,
+                config.bili_live_song_playlist_max_tracks,
+            )
+        except MusicServiceError as exc:
+            await bot.send(event, reply_text(config.bili_live_song_reply_prefix, str(exc)))
+            return
+        except Exception:
+            logger.exception("获取网易云歌单失败")
+            await bot.send(event, reply_text(config.bili_live_song_reply_prefix, "歌单导入失败，请稍后重试"))
+            return
+        if not tracks:
+            await bot.send(event, reply_text(config.bili_live_song_reply_prefix, "歌单里没有可导入的歌曲"))
+            return
+        added = queue_manager.add_playlist_tracks(
+            room_id=event.room_id,
+            user_id=event.get_user_id(),
+            user_name=getattr(event.sender, "name", event.get_user_id()),
+            playlist_name=playlist_name,
+            tracks=tracks,
+        )
+        queue_manager.ensure_current(event.room_id)
+        update_overlay(event.room_id)
+        await bot.send(event, playlist_success_text(config.bili_live_song_reply_prefix, added, playlist_name))
         return
 
     if command == CommandType.REQUEST:
@@ -108,7 +164,7 @@ async def handle_message(bot: WebBot, event: DanmakuEvent | SuperChatEvent) -> N
             return
         try:
             song = await music_service.search_first_song(payload)
-        except Exception as exc:
+        except Exception:
             logger.exception("搜索网易云歌曲失败")
             await bot.send(event, reply_text(config.bili_live_song_reply_prefix, "点歌服务暂时不可用，请稍后重试"))
             return
@@ -125,4 +181,5 @@ async def handle_message(bot: WebBot, event: DanmakuEvent | SuperChatEvent) -> N
             superchat_price=float(getattr(event, "price", 0.0) or 0.0),
         )
         queue_manager.ensure_current(event.room_id)
+        update_overlay(event.room_id)
         await bot.send(event, request_success_text(config.bili_live_song_reply_prefix, item))

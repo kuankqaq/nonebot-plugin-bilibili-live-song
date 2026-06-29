@@ -27,3 +27,13 @@ class PermissionChecker:
         if sender and getattr(sender, "is_admin", False):
             return True
         return user_id in self.room_admins.get(event.room_id, set())
+
+    def can_manage_playlist(
+        self,
+        event: DanmakuEvent | SuperChatEvent,
+        anchor_user_id: str | None = None,
+    ) -> bool:
+        user_id = event.get_user_id()
+        if user_id in self.config.bili_live_song_admin_user_ids:
+            return True
+        return bool(anchor_user_id and user_id == anchor_user_id)

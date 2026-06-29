@@ -2,11 +2,10 @@ from __future__ import annotations
 
 import time
 import uuid
-from collections import defaultdict
 from typing import Optional
 
 from .config import RoomSettings
-from .models import SongInfo, SongRequest
+from .models import PlaylistTrack, SongInfo, SongRequest
 from .storage import Storage
 
 
@@ -64,6 +63,36 @@ class QueueManager:
         self.storage.upsert_request(request)
         self.last_request_time[(room_id, user_id)] = now
         return request
+
+    def add_playlist_tracks(
+        self,
+        room_id: int,
+        user_id: str,
+        user_name: str,
+        playlist_name: str,
+        tracks: list[PlaylistTrack],
+    ) -> int:
+        added = 0
+        now = time.time()
+        for track in tracks:
+            request = SongRequest(
+                request_id=uuid.uuid4().hex,
+                room_id=room_id,
+                user_id=user_id,
+                user_name=user_name,
+                keyword=playlist_name,
+                song_id=track.song_id,
+                song_name=track.song_name,
+                artist=track.artist,
+                priority=0,
+                is_superchat=False,
+                superchat_price=0.0,
+                created_at=now + added / 1000,
+                updated_at=now + added / 1000,
+            )
+            self.storage.upsert_request(request)
+            added += 1
+        return added
 
     def list_queue(self, room_id: int) -> list[SongRequest]:
         return self.storage.list_queue(room_id)

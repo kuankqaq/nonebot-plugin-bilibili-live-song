@@ -14,12 +14,20 @@ class CommandType:
     CANCEL = "cancel"
     SKIP = "skip"
     HELP = "help"
+    PLAYLIST = "playlist"
+
+
+PLAYLIST_COMMANDS = ("/添加歌单 ", "/导入歌单 ")
 
 
 def parse_command(event: DanmakuEvent | SuperChatEvent) -> tuple[str | None, str]:
     text = str(event.get_message()).strip()
     if text.startswith("/点歌 "):
         return CommandType.REQUEST, text[4:].strip()
+    if any(text.startswith(prefix) for prefix in PLAYLIST_COMMANDS):
+        for prefix in PLAYLIST_COMMANDS:
+            if text.startswith(prefix):
+                return CommandType.PLAYLIST, text[len(prefix) :].strip()
     if text == "/歌单":
         return CommandType.LIST, ""
     if text == "/当前":

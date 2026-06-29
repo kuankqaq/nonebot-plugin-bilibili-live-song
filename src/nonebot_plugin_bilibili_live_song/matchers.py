@@ -2,8 +2,6 @@ from __future__ import annotations
 
 from nonebot import get_plugin_config, on_type
 from nonebot.adapters.bilibili_live import DanmakuEvent, RoomAdminsEvent, SuperChatEvent
-from nonebot.exception import FinishedException
-from nonebot.matcher import Matcher
 
 from .config import Config
 

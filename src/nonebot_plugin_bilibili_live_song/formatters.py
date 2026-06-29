@@ -17,6 +17,10 @@ def request_success_text(prefix: str, item: SongRequest) -> str:
     )
 
 
+def playlist_success_text(prefix: str, count: int, playlist_name: str) -> str:
+    return reply_text(prefix, f"已导入歌单：{playlist_name}，共添加 {count} 首")
+
+
 def queue_text(prefix: str, lines: list[str]) -> str:
     if not lines:
         return reply_text(prefix, "当前歌单为空")
@@ -26,5 +30,5 @@ def queue_text(prefix: str, lines: list[str]) -> str:
 def help_text(prefix: str) -> str:
     return reply_text(
         prefix,
-        "命令：/点歌 关键词 /歌单 /当前 /取消 /切歌 /点歌帮助",
+        "命令：/点歌 关键词 /添加歌单 歌单ID或链接 /歌单 /当前 /取消 /切歌 /点歌帮助",
     )

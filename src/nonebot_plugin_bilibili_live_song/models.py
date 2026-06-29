@@ -29,3 +29,11 @@ class SongRequest:
     status: Literal["queued", "playing", "done", "cancelled"] = "queued"
     created_at: float = 0.0
     updated_at: float = 0.0
+
+
+@dataclass(slots=True)
+class PlaylistTrack:
+    song_id: int
+    song_name: str
+    artist: str
+    album: str = ""
