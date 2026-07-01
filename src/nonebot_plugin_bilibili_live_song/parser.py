@@ -17,17 +17,23 @@ class CommandType:
     PLAYLIST = "playlist"
 
 
+REQUEST_COMMANDS = ("/点歌 ", "点歌 ")
 PLAYLIST_COMMANDS = ("/添加歌单 ", "/导入歌单 ")
 
 
 def parse_command(event: DanmakuEvent | SuperChatEvent) -> tuple[str | None, str]:
     text = str(event.get_message()).strip()
-    if text.startswith("/点歌 "):
-        return CommandType.REQUEST, text[4:].strip()
-    if any(text.startswith(prefix) for prefix in PLAYLIST_COMMANDS):
-        for prefix in PLAYLIST_COMMANDS:
-            if text.startswith(prefix):
-                return CommandType.PLAYLIST, text[len(prefix) :].strip()
+    if not text:
+        return None, ""
+
+    for prefix in REQUEST_COMMANDS:
+        if text.startswith(prefix):
+            return CommandType.REQUEST, text[len(prefix) :].strip()
+
+    for prefix in PLAYLIST_COMMANDS:
+        if text.startswith(prefix):
+            return CommandType.PLAYLIST, text[len(prefix) :].strip()
+
     if text == "/歌单":
         return CommandType.LIST, ""
     if text == "/当前":
@@ -38,7 +44,10 @@ def parse_command(event: DanmakuEvent | SuperChatEvent) -> tuple[str | None, str
         return CommandType.SKIP, ""
     if text == "/点歌帮助":
         return CommandType.HELP, ""
-    return None, ""
+
+    if text.startswith("/"):
+        return None, ""
+    return CommandType.REQUEST, text
 
 
 def format_queue_line(index: int, item: SongRequest) -> str:

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 
 import httpx
@@ -40,6 +41,10 @@ class NeteaseMusicService:
         async with httpx.AsyncClient(
             timeout=self.timeout, headers=self.headers
         ) as client:
+            song_id = self._extract_song_id(keyword)
+            if song_id is not None:
+                return await self._get_song_info_by_id(client, song_id)
+
             response = await client.get(
                 f"{self.base_url}/cloudsearch",
                 params={"keywords": keyword, "type": 1, "limit": 1},
@@ -54,6 +59,23 @@ class NeteaseMusicService:
             song = songs[0]
             play_url = await self._get_song_url(client, int(song["id"]))
         return self._to_song_info(song, play_url)
+
+    async def _get_song_info_by_id(
+        self,
+        client: httpx.AsyncClient,
+        song_id: int,
+    ) -> SongInfo | None:
+        response = await client.get(
+            f"{self.base_url}/song/detail",
+            params={"ids": str(song_id)},
+        )
+        response.raise_for_status()
+        data = response.json()
+        songs = data.get("songs", [])
+        if not songs:
+            return None
+        play_url = await self._get_song_url(client, song_id)
+        return self._to_song_info(songs[0], play_url)
 
     async def get_playlist_tracks(
         self,
@@ -133,6 +155,16 @@ class NeteaseMusicService:
         if not digits:
             raise MusicServiceError("未识别到歌单 ID")
         return int(digits)
+
+    @staticmethod
+    def _extract_song_id(keyword: str) -> int | None:
+        text = keyword.strip()
+        if text.isdigit():
+            return int(text)
+        match = re.search(r"(?:[?&]id=|/song/)(\d+)", text)
+        if match:
+            return int(match.group(1))
+        return None
 
     @staticmethod
     def _artist_text(song: dict) -> str:
