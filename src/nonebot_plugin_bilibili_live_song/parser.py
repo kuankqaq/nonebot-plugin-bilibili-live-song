@@ -45,9 +45,7 @@ def parse_command(event: DanmakuEvent | SuperChatEvent) -> tuple[str | None, str
     if text == "/点歌帮助":
         return CommandType.HELP, ""
 
-    if text.startswith("/"):
-        return None, ""
-    return CommandType.REQUEST, text
+    return None, ""
 
 
 def format_queue_line(index: int, item: SongRequest) -> str:
