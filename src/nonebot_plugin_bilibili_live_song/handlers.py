@@ -53,13 +53,13 @@ def update_overlay(room_id: int) -> None:
     if overlay_renderer is None:
         return
     current = queue_manager.ensure_current(room_id)
-    queue = queue_manager.list_queue(room_id)
+    queue = queue_manager.list_display_queue(room_id)
     overlay_renderer.render(current, queue)
 
 
 async def update_overlay_with_audio(room_id: int) -> None:
     current = queue_manager.ensure_current(room_id)
-    queue = queue_manager.list_queue(room_id)
+    queue = queue_manager.list_display_queue(room_id)
     for item in ([current] if current else []) + queue:
         if item.play_url:
             continue
@@ -225,13 +225,19 @@ async def handle_message(bot: WebBot, event: DanmakuEvent | SuperChatEvent) -> N
                 ),
             )
             return
+        use_warmup = queue_manager.should_use_warmup_playlist(event.room_id)
+        if use_warmup:
+            queue_manager.clear_warmup_playlist(event.room_id)
         added = queue_manager.add_playlist_tracks(
             room_id=event.room_id,
             user_id=event.get_user_id(),
             user_name=getattr(event.sender, "name", event.get_user_id()),
             playlist_name=playlist_name,
             tracks=tracks,
+            queue_type="warmup" if use_warmup else "main",
         )
+        if use_warmup:
+            queue_manager.mark_warmup_playlist_initialized(event.room_id)
         await update_overlay_with_audio(event.room_id)
         await bot.send(
             event,

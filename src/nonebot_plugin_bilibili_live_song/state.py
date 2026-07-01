@@ -13,6 +13,7 @@ class QueueManager:
     def __init__(self, storage: Storage):
         self.storage = storage
         self.last_request_time: dict[tuple[int, str], float] = {}
+        self.warmup_initialized_rooms: set[int] = set()
 
     def can_request(
         self,
@@ -43,6 +44,7 @@ class QueueManager:
         song: SongInfo,
         is_superchat: bool,
         superchat_price: float,
+        queue_type: str = "main",
     ) -> SongRequest:
         now = time.time()
         request = SongRequest(
@@ -61,6 +63,7 @@ class QueueManager:
             fee=song.fee,
             is_trial=song.is_trial,
             play_url_source=song.play_url_source,
+            queue_type=queue_type,
             created_at=now,
             updated_at=now,
         )
@@ -75,6 +78,7 @@ class QueueManager:
         user_name: str,
         playlist_name: str,
         tracks: list[PlaylistTrack],
+        queue_type: str = "main",
     ) -> int:
         added = 0
         now = time.time()
@@ -95,6 +99,7 @@ class QueueManager:
                 fee=track.fee,
                 is_trial=track.is_trial,
                 play_url_source=track.play_url_source,
+                queue_type=queue_type,
                 created_at=now + added / 1000,
                 updated_at=now + added / 1000,
             )
@@ -104,6 +109,22 @@ class QueueManager:
 
     def list_queue(self, room_id: int) -> list[SongRequest]:
         return self.storage.list_queue(room_id)
+
+    def list_warmup_queue(self, room_id: int) -> list[SongRequest]:
+        return self.storage.list_queue(room_id, queue_type="warmup")
+
+    def list_display_queue(self, room_id: int) -> list[SongRequest]:
+        queue = self.list_queue(room_id)
+        return queue if queue else self.list_warmup_queue(room_id)
+
+    def should_use_warmup_playlist(self, room_id: int) -> bool:
+        return room_id not in self.warmup_initialized_rooms
+
+    def mark_warmup_playlist_initialized(self, room_id: int) -> None:
+        self.warmup_initialized_rooms.add(room_id)
+
+    def clear_warmup_playlist(self, room_id: int) -> None:
+        self.storage.delete_queue_type(room_id, "warmup")
 
     def update_request(self, item: SongRequest) -> None:
         item.updated_at = time.time()
@@ -127,23 +148,36 @@ class QueueManager:
         if current is None:
             queue = self.storage.list_queue(room_id)
             if not queue:
-                return None
+                queue = self.storage.list_queue(room_id, queue_type="warmup")
+                if not queue:
+                    return None
             current = queue[0]
         current.status = "done"
         current.updated_at = time.time()
-        self.storage.delete_request(current.request_id)
         self.storage.clear_current(room_id)
+        if current.queue_type == "warmup":
+            self.storage.set_queued(current.request_id, created_at=time.time())
+        else:
+            self.storage.delete_request(current.request_id)
         next_queue = self.storage.list_queue(room_id)
+        if not next_queue:
+            next_queue = self.storage.list_queue(room_id, queue_type="warmup")
         if next_queue:
             self.storage.set_current(room_id, next_queue[0].request_id)
         return current
 
     def ensure_current(self, room_id: int) -> Optional[SongRequest]:
         current = self.storage.get_current(room_id)
-        if current is not None:
-            return current
         queue = self.storage.list_queue(room_id)
+        if current is not None:
+            if current.queue_type == "warmup" and queue:
+                self.storage.set_queued(current.request_id)
+                self.storage.set_current(room_id, queue[0].request_id)
+                return self.storage.get_current(room_id)
+            return current
         if not queue:
-            return None
+            queue = self.storage.list_queue(room_id, queue_type="warmup")
+            if not queue:
+                return None
         self.storage.set_current(room_id, queue[0].request_id)
         return self.storage.get_current(room_id)

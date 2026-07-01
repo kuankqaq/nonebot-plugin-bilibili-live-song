@@ -37,6 +37,7 @@ class Storage:
                     fee INTEGER NOT NULL DEFAULT 0,
                     is_trial INTEGER NOT NULL DEFAULT 0,
                     play_url_source TEXT NOT NULL DEFAULT 'none',
+                    queue_type TEXT NOT NULL DEFAULT 'main',
                     status TEXT NOT NULL,
                     created_at REAL NOT NULL,
                     updated_at REAL NOT NULL
@@ -66,6 +67,11 @@ class Storage:
                     "ALTER TABLE song_queue ADD COLUMN play_url_source TEXT "
                     "NOT NULL DEFAULT 'none'",
                 )
+            if "queue_type" not in columns:
+                conn.execute(
+                    "ALTER TABLE song_queue ADD COLUMN queue_type TEXT "
+                    "NOT NULL DEFAULT 'main'",
+                )
             conn.execute(
                 """
                 CREATE TABLE IF NOT EXISTS now_playing (
@@ -83,8 +89,8 @@ class Storage:
                     request_id, room_id, user_id, user_name, keyword, song_id,
                     song_name, artist, source, priority, is_superchat,
                     superchat_price, play_url, fee, is_trial, play_url_source,
-                    status, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    queue_type, status, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(request_id) DO UPDATE SET
                     room_id = excluded.room_id,
                     user_id = excluded.user_id,
@@ -101,6 +107,7 @@ class Storage:
                     fee = excluded.fee,
                     is_trial = excluded.is_trial,
                     play_url_source = excluded.play_url_source,
+                    queue_type = excluded.queue_type,
                     status = excluded.status,
                     created_at = excluded.created_at,
                     updated_at = excluded.updated_at
@@ -122,6 +129,7 @@ class Storage:
                     item.fee,
                     int(item.is_trial),
                     item.play_url_source,
+                    item.queue_type,
                     item.status,
                     item.created_at,
                     item.updated_at,
@@ -133,19 +141,36 @@ class Storage:
             conn.execute("DELETE FROM song_queue WHERE request_id = ?", (request_id,))
             conn.execute("DELETE FROM now_playing WHERE request_id = ?", (request_id,))
 
-    def list_queue(self, room_id: int) -> list[SongRequest]:
+    def delete_queue_type(self, room_id: int, queue_type: str) -> None:
+        with self._connect() as conn:
+            conn.execute(
+                """
+                DELETE FROM now_playing
+                WHERE request_id IN (
+                    SELECT request_id FROM song_queue
+                    WHERE room_id = ? AND queue_type = ?
+                )
+                """,
+                (room_id, queue_type),
+            )
+            conn.execute(
+                "DELETE FROM song_queue WHERE room_id = ? AND queue_type = ?",
+                (room_id, queue_type),
+            )
+
+    def list_queue(self, room_id: int, queue_type: str = "main") -> list[SongRequest]:
         with self._connect() as conn:
             rows = conn.execute(
                 """
                 SELECT request_id, room_id, user_id, user_name, keyword, song_id,
                        song_name, artist, source, priority, is_superchat,
                        superchat_price, play_url, fee, is_trial, play_url_source,
-                       status, created_at, updated_at
+                       queue_type, status, created_at, updated_at
                 FROM song_queue
-                WHERE room_id = ? AND status = 'queued'
+                WHERE room_id = ? AND status = 'queued' AND queue_type = ?
                 ORDER BY priority DESC, created_at ASC
                 """,
-                (room_id,),
+                (room_id, queue_type),
             ).fetchall()
         return [self._row_to_request(row) for row in rows]
 
@@ -156,8 +181,8 @@ class Storage:
                 SELECT q.request_id, q.room_id, q.user_id, q.user_name, q.keyword,
                        q.song_id, q.song_name, q.artist, q.source, q.priority,
                        q.is_superchat, q.superchat_price, q.play_url, q.fee,
-                       q.is_trial, q.play_url_source, q.status, q.created_at,
-                       q.updated_at
+                       q.is_trial, q.play_url_source, q.queue_type, q.status,
+                       q.created_at, q.updated_at
                 FROM now_playing n
                 JOIN song_queue q ON q.request_id = n.request_id
                 WHERE n.room_id = ?
@@ -182,6 +207,23 @@ class Storage:
                 (request_id,),
             )
 
+    def set_queued(self, request_id: str, created_at: float | None = None) -> None:
+        with self._connect() as conn:
+            if created_at is None:
+                conn.execute(
+                    "UPDATE song_queue SET status = 'queued' WHERE request_id = ?",
+                    (request_id,),
+                )
+            else:
+                conn.execute(
+                    """
+                    UPDATE song_queue
+                    SET status = 'queued', created_at = ?, updated_at = ?
+                    WHERE request_id = ?
+                    """,
+                    (created_at, created_at, request_id),
+                )
+
     def clear_current(self, room_id: int) -> None:
         with self._connect() as conn:
             conn.execute("DELETE FROM now_playing WHERE room_id = ?", (room_id,))
@@ -205,7 +247,8 @@ class Storage:
             fee=int(row[13] or 0),
             is_trial=bool(row[14]),
             play_url_source=row[15] or "none",
-            status=row[16],
-            created_at=row[17],
-            updated_at=row[18],
+            queue_type=row[16] or "main",
+            status=row[17],
+            created_at=row[18],
+            updated_at=row[19],
         )

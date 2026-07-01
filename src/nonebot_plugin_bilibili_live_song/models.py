@@ -34,6 +34,7 @@ class SongRequest:
     fee: int = 0
     is_trial: bool = False
     play_url_source: str = "none"
+    queue_type: Literal["main", "warmup"] = "main"
     status: Literal["queued", "playing", "done", "cancelled"] = "queued"
     created_at: float = 0.0
     updated_at: float = 0.0
