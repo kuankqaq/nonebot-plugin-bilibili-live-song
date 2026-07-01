@@ -18,7 +18,7 @@ class CommandType:
 
 
 REQUEST_COMMANDS = ("/点歌 ", "点歌 ")
-PLAYLIST_COMMANDS = ("/添加歌单 ", "/导入歌单 ")
+PLAYLIST_COMMANDS = ("/添加歌单 ", "/导入歌单 ", "添加歌单 ", "导入歌单 ")
 
 
 def parse_command(event: DanmakuEvent | SuperChatEvent) -> tuple[str | None, str]:

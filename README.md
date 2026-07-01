@@ -81,7 +81,9 @@ BILI_LIVE_SONG_OVERLAY_DIR=.bili_live_song/overlay
 - `/点歌 22605222`
 - `点歌 https://music.163.com/#/song?id=22605222`
 - `/添加歌单 123456789`
+- `添加歌单 123456789`
 - `/添加歌单 https://music.163.com/#/playlist?id=123456789`
+- `添加歌单 https://music.163.com/#/playlist?id=123456789`
 - `/歌单`
 - `/当前`
 - `/取消`
