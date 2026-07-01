@@ -172,12 +172,13 @@ async def handle_message(bot: WebBot, event: DanmakuEvent | SuperChatEvent) -> N
             )
             return
         await update_overlay_with_audio(event.room_id)
+        current = queue_manager.get_current(event.room_id)
+        message = f"已切歌：{skipped.song_name} - {skipped.artist}"
+        if current is None:
+            message += "，队列已清空"
         await bot.send(
             event,
-            reply_text(
-                config.bili_live_song_reply_prefix,
-                f"已切歌：{skipped.song_name} - {skipped.artist}",
-            ),
+            reply_text(config.bili_live_song_reply_prefix, message),
         )
         return
 
