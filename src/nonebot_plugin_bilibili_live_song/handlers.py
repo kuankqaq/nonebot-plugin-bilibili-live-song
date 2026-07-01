@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import asyncio
+import re
 import threading
 import time
+from datetime import datetime, timedelta
 
 from nonebot import get_plugin_config, logger
 from nonebot.adapters.bilibili_live import DanmakuEvent, SuperChatEvent, WebBot
@@ -47,6 +50,7 @@ overlay_server = (
     else None
 )
 _overlay_watcher_started = False
+_NETEASE_URL_EXPIRES_RE = re.compile(r"music\.126\.net/(\d{14})/")
 
 
 def update_overlay(room_id: int) -> None:
@@ -60,8 +64,8 @@ def update_overlay(room_id: int) -> None:
 async def update_overlay_with_audio(room_id: int) -> None:
     current = queue_manager.ensure_current(room_id)
     queue = queue_manager.list_display_queue(room_id)
-    for item in ([current] if current else []) + queue:
-        if item.play_url:
+    for item in ([current] if current else []) + queue[:3]:
+        if item.play_url and not _is_play_url_expired(item.play_url):
             continue
         play_url = await music_service.get_song_url(item.song_id)
         if play_url.url:
@@ -72,12 +76,20 @@ async def update_overlay_with_audio(room_id: int) -> None:
     update_overlay(room_id)
 
 
+def _is_play_url_expired(url: str) -> bool:
+    match = _NETEASE_URL_EXPIRES_RE.search(url)
+    if not match:
+        return False
+    expires_at = datetime.strptime(match.group(1), "%Y%m%d%H%M%S")
+    return expires_at <= datetime.now() + timedelta(minutes=3)
+
+
 def process_next_track(room_id: int) -> None:
     skipped = queue_manager.skip_current(room_id)
     if skipped is None:
         update_overlay(room_id)
         return
-    update_overlay(room_id)
+    asyncio.run(update_overlay_with_audio(room_id))
 
 
 def start_overlay_watcher() -> None:
