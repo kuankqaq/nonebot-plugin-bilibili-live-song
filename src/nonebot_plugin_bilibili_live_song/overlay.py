@@ -190,6 +190,7 @@ class OverlayRenderer:
   <script>
     let currentUrl = '';
     let currentRoomId = 0;
+    let nextInFlight = false;
     const player = document.getElementById('player');
     const status = document.getElementById('status');
     const progress = document.getElementById('progress');
@@ -228,6 +229,7 @@ class OverlayRenderer:
         player.removeAttribute('src');
         player.load();
         updateProgress();
+        await requestNext('无音源，切下一首');
         return;
       }
 
@@ -266,6 +268,18 @@ class OverlayRenderer:
         status.textContent = '待授权';
         console.warn('autoplay blocked', err);
       }
+    }
+
+    async function requestNext(label) {
+      if (!currentRoomId || nextInFlight) return;
+      nextInFlight = true;
+      status.textContent = label;
+      currentUrl = '';
+      await notifyEnded();
+      setTimeout(async () => {
+        nextInFlight = false;
+        await refresh();
+      }, 500);
     }
 
     async function notifyEnded() {
@@ -317,13 +331,13 @@ class OverlayRenderer:
     player.addEventListener('pause', () => {
       if (currentUrl && !player.ended) status.textContent = '已暂停';
     });
-    player.addEventListener('error', () => { status.textContent = '播放失败'; });
+    player.addEventListener('error', async () => {
+      await requestNext('播放失败，切下一首');
+    });
     player.addEventListener('timeupdate', updateProgress);
     player.addEventListener('loadedmetadata', updateProgress);
     player.addEventListener('ended', async () => {
-      currentUrl = '';
-      await notifyEnded();
-      setTimeout(refresh, 500);
+      await requestNext('切下一首');
     });
     refresh();
     setInterval(refresh, 2000);

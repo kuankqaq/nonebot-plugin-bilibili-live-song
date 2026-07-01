@@ -171,7 +171,7 @@ class QueueManager:
         queue = self.storage.list_queue(room_id)
         if current is not None:
             if current.queue_type == "warmup" and queue:
-                self.storage.set_queued(current.request_id)
+                self.storage.set_queued(current.request_id, created_at=time.time())
                 self.storage.set_current(room_id, queue[0].request_id)
                 return self.storage.get_current(room_id)
             return current
