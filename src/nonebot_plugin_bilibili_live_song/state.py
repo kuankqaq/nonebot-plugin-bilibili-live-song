@@ -114,7 +114,10 @@ class QueueManager:
         return self.storage.list_queue(room_id, queue_type="warmup")
 
     def list_display_queue(self, room_id: int) -> list[SongRequest]:
+        current = self.storage.get_current(room_id)
         queue = self.list_queue(room_id)
+        if queue or (current is not None and current.queue_type == "main"):
+            return queue
         return queue if queue else self.list_warmup_queue(room_id)
 
     def should_use_warmup_playlist(self, room_id: int) -> bool:
@@ -129,6 +132,39 @@ class QueueManager:
     def update_request(self, item: SongRequest) -> None:
         item.updated_at = time.time()
         self.storage.upsert_request(item)
+
+    def find_queued_by_song(self, room_id: int, song_id: int) -> SongRequest | None:
+        for item in self.storage.list_queue(room_id):
+            if item.song_id == song_id:
+                return item
+        for item in self.storage.list_queue(room_id, queue_type="warmup"):
+            if item.song_id == song_id:
+                return item
+        return None
+
+    def promote_request_to_main(
+        self,
+        item: SongRequest,
+        user_id: str,
+        user_name: str,
+        keyword: str,
+        is_superchat: bool,
+        superchat_price: float,
+    ) -> SongRequest:
+        now = time.time()
+        item.user_id = user_id
+        item.user_name = user_name
+        item.keyword = keyword
+        item.priority = 1 if is_superchat else 0
+        item.is_superchat = is_superchat
+        item.superchat_price = superchat_price
+        item.queue_type = "main"
+        item.status = "queued"
+        item.created_at = now
+        item.updated_at = now
+        self.storage.upsert_request(item)
+        self.last_request_time[(item.room_id, user_id)] = now
+        return item
 
     def get_current(self, room_id: int) -> Optional[SongRequest]:
         return self.storage.get_current(room_id)
@@ -171,7 +207,7 @@ class QueueManager:
         queue = self.storage.list_queue(room_id)
         if current is not None:
             if current.queue_type == "warmup" and queue:
-                self.storage.set_queued(current.request_id, created_at=time.time())
+                self.storage.set_queued(current.request_id)
                 self.storage.set_current(room_id, queue[0].request_id)
                 return self.storage.get_current(room_id)
             return current

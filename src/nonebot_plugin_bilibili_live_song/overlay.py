@@ -16,10 +16,16 @@ class OverlayRenderer:
         self.json_path = self.output_dir / "queue.json"
         self._ensure_html()
 
-    def render(self, current: SongRequest | None, queue: list[SongRequest]) -> None:
+    def render(
+        self,
+        current: SongRequest | None,
+        queue: list[SongRequest],
+        audience_feedback: str = "",
+    ) -> None:
         payload = {
             "current": self._serialize(current) if current else None,
             "queue": [self._serialize(item) for item in queue[:3]],
+            "audience_feedback": audience_feedback,
         }
         self.json_path.write_text(
             json.dumps(payload, ensure_ascii=False, indent=2),
@@ -147,6 +153,17 @@ class OverlayRenderer:
     .queue {
       margin-top: 12px;
     }
+    .audience {
+      min-height: 21px;
+      margin-top: 10px;
+      color: #86f3b5;
+      font-size: 13px;
+      line-height: 1.35;
+      overflow-wrap: anywhere;
+    }
+    .audience:empty {
+      display: none;
+    }
     .queue-item {
       display: grid;
       grid-template-columns: 24px 1fr;
@@ -186,6 +203,7 @@ class OverlayRenderer:
       <div class="label">排队中</div>
       <div id="queue"></div>
     </div>
+    <div id="audience" class="audience"></div>
   </div>
   <script>
     let currentUrl = '';
@@ -201,6 +219,7 @@ class OverlayRenderer:
       const data = await resp.json();
       renderCurrent(data.current);
       renderQueue(data.queue || []);
+      renderAudience(data.audience_feedback || '');
     }
 
     async function renderCurrent(item) {
@@ -258,6 +277,11 @@ class OverlayRenderer:
           escapeHtml(item.user_name) + '</div></div>';
         queue.appendChild(node);
       }
+    }
+
+    function renderAudience(text) {
+      const audience = document.getElementById('audience');
+      audience.textContent = text ? '观众 ' + text : '';
     }
 
     async function playQuietly() {
@@ -354,12 +378,13 @@ class OverlayRenderer:
             "room_id": item.room_id,
             "song_name": item.song_name,
             "artist": item.artist,
-            "user_name": item.user_name,
+            "user_name": "暖场歌单" if item.queue_type == "warmup" else item.user_name,
             "is_superchat": item.is_superchat,
             "play_url": item.play_url,
             "fee": item.fee,
             "is_trial": item.is_trial,
             "play_url_source": item.play_url_source,
+            "queue_type": item.queue_type,
         }
 
 
